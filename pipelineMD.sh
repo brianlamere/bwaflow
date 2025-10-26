@@ -83,7 +83,7 @@ do
 
 	IFS=$'\n'
 	#do the one with runsam to runsam, or without to not
-	cmdlist=("$runVsam" "$runSsam" "$runIsam" "$runEmd" "$runCRmd" "$runMCmd")
+	cmdlist=("$runVsam" "$runSsam" "$runSTsam" "$runIsam" "$runEmd" "$runCRmd" "$runMCmd")
 	for mycmd in ${cmdlist[@]}
 	do
 		IFS=" "
@@ -92,7 +92,7 @@ do
 			echo -e "\e[41mI would run:\e[44m  ${mycmd}\e[0m"
 		else
 			echo -e "\e[41mI will run:\e[44m  ${mycmd}\e[0m"
-			if ${mycmd}; then
+			if ieval ${mycmd}; then
 				echo "ran CMD without error:\n ${mycmd}" >> ${LOGFILE}
 			else
 				echo "We died with this:\n ${mycmd}" >> ${LOGFILE}
@@ -100,14 +100,5 @@ do
 			fi
 		fi
 	done
-	if [ "$dryrun" = "yes" ]; then
-		echo "Pocket commands won't be run"
-	else
-		#I hate this workaround, but whatever.
-		echo "${runSTsam}" > /tmp/runSTsam.sh
-		#echo "${runSTsam}"
-		sh /tmp/runSTsam.sh
-		rm /tmp/runSTsam.sh
-	fi
 done
 exit 0

@@ -7,7 +7,7 @@ curtime=$(date "+%d%h%Y-%H.%M.%S")
 
 tgt=`echo ${1}|tr -d '/'`
 
-aroot="/projects/Toxo"
+aroot="/projects/toxo2"
 aref=`ls ${aroot}/references/${tgt}/*.fasta`
 
 bwa="python /usr/local/bin/bwameth.py"
