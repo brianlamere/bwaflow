@@ -96,7 +96,7 @@ do
 			echo -e "\e[41mI would run:\e[44m  ${mycmd}\e[0m"
 		else
 			echo -e "\e[41mI will run:\e[44m  ${mycmd}\e[0m"
-			if ieval ${mycmd}; then
+			if eval ${mycmd}; then
 				echo "ran CMD without error:\n ${mycmd}" >> ${LOGFILE}
 			else
 				echo "We died with this:\n ${mycmd}" >> ${LOGFILE}
