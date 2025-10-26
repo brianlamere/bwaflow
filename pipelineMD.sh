@@ -21,7 +21,11 @@ tgt=`echo ${1}|tr -d '/'`
 aref=`ls ${aroot}/references/${tgt}/*.fasta`
 
 #manually sync the "-q " value to the mqX value
-samVopts="view --threads 4 -q 42 --add-flags 0x2 -bT ${aref}"
+#I had a weirdness where bwa was not tagging things as "properly paired" for many items, which
+# then meant they didn't get processed for this project.  The paired aligned high quality reads
+# were otherwise ~99.95% of what should have been "properly paired" and it seemed to be a bwa bug.
+#samVopts="view --threads 4 -q 42 --add-flags 0x2 -bT ${aref}"
+samVopts="view --threads 4 -q 42 -bT ${aref}"
 mqX=".mq42" #manually sync with above -q value
 
 samSopts="sort --threads 4"
