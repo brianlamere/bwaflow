@@ -1,13 +1,17 @@
 #!/usr/bin/bash
 
 #the $1 is the task you're running.  references and targets are in sync this time.
+#intention is that the directory you're in has a directory with this name in it, AND
+#that it matches a directory name in the reference directory
 #references:  ADNP2  AJAP1  CELF5  EFNA3  EN1  LAMBDA  PAK6  PTPN2  SUZ12
 
 curtime=$(date "+%d%h%Y-%H.%M.%S")
+dryrun="yes"
 
 tgt=`echo ${1}|tr -d '/'`
 
 aroot="/projects/toxo2"
+fastqs="/projects/toxo2/MS20251020-1"
 aref=`ls ${aroot}/references/${tgt}/*.fasta`
 
 bwa="python /usr/local/bin/bwameth.py"
@@ -17,7 +21,7 @@ bwargs="--threads 16 --reference ${aref}"
 LOGFILE="./logfile.out"
 [ -f $LOGFILE ] && mv $LOGFILE $LOGFILE.$curtime
 
-outdir="/projects/Toxo/bwaout/${tgt}"
+outdir="${aroot}/bwaout/${tgt}"
 [ ! -d ${outdir} ] && mkdir -p ${outdir}
 
 #previous use had hundreds of items, still better to prevent typos however
@@ -29,17 +33,20 @@ do
 	IFS="/" read -ra parts1 <<< "$R1"
 	outfile="${parts1[1]}.bwameth.sam"
 
-	outdir="/projects/Toxo/bwaout/${tgt}"
 	perargs="${outdir}/${newdir}.bwameth.sam"
 	outfull="${outdir}/${outfile}"
-	bwacmd="${bwa} ${bwargs} ${aroot}/bsproj/${R1} ${aroot}/bsproj/${R2}"
-	echo -e "\e[41mI will run:\e[44m  ${bwacmd} > ${outfull}\e[0m" | tee -a $LOGFILE
-	if ${bwacmd} > ${outfull}; then
-		echo "ran this without error:\n  ${bwacmd}" >> ${LOGFILE} 
-	else
-		echo "We died with this:\n ${bwacmd}\n.  If we die, we stop." | tee -a ${LOGFILE}
-		exit 1
-	fi
+    bwacmd="${bwa} ${bwargs} ${PWD}/${R1} ${PWD}/${R2}"
+    if [ "${dryrun,,}" = "yes" ]; then
+        echo -e "\e[41mI would run:\e[44m  ${bwacmd} > ${outfull}\e[0m"
+    else
+	    echo -e "\e[41mI will run:\e[44m  ${bwacmd} > ${outfull}\e[0m" | tee -a $LOGFILE
+	    if ${bwacmd} > ${outfull}; then
+		    echo "ran this without error:\n  ${bwacmd}" >> ${LOGFILE} 
+	    else
+		    echo "We died with this:\n ${bwacmd}\n.  If we die, we stop." | tee -a ${LOGFILE}
+		    exit 1
+	    fi
+    fi
 done
 
 exit 0
