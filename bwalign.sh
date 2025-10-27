@@ -1,15 +1,16 @@
 #!/usr/bin/bash
-# Conservative refactor of bwalign.sh to use the fastqs root and keep dryrun behavior.
-# Usage examples:
-#   ./bwalign.sh -n yes -r /projects/toxo2 -f /projects/toxo2/MS20251020-1 SUZ12
-#   ./bwalign.sh -n no  -r /projects/toxo2 -f /projects/toxo2/MS20251020-1 SUZ12
+# Conservative refactor of bwalign.sh with optional bwameth wrapper support.
+# If you place the wrapper at ~/bin/bwameth-wrapper.py (or anywhere else),
+# this script will prefer it automatically.  Otherwise it falls back to
+# the system bwameth.py (invoked with python).
 set -euo pipefail
 
 # defaults (edit here or override with -n/-r/-f)
-dryrun="yes"                             # set to "no" to actually run
+dryrun="yes"                   # set to "no" to actually run
 aroot="/projects/toxo2"
-fastqs="/projects/toxo2/MS20251020-1"    # root containing per-reference directories (e.g. MS20251020-1/ADNP2/...)
+fastqs="/projects/toxo2/MS20251020-1"    # root containing per-reference directories
 bwameth_path="/usr/local/bin/bwameth.py" # path to bwameth wrapper (python script)
+bwameth_wrapper="${aroot}/scripts/bwameth-wrapper.py" # preferred non-invasive shim
 python_bin="python"
 
 # bwameth args (array so you can adjust at top of file)
@@ -22,8 +23,6 @@ Usage: $0 [-n yes|no] [-r aroot] [-f fastqs_root] TARGET
   -r aroot                default: ${aroot}
   -f fastqs_root          default: ${fastqs}
   TARGET                  e.g. SUZ12
-Example:
-  $0 -n yes -r /projects/toxo2 -f /projects/toxo2/MS20251020-1 SUZ12
 EOF
   exit 1
 }
@@ -52,13 +51,20 @@ aref="$(ls "${aroot}/references/${tgt}"/*.fasta 2>/dev/null | head -n1 || true)"
 # finalize bwargs with reference
 bwargs+=( --reference "${aref}" )
 
-# verify python and bwameth
-command -v "$python_bin" >/dev/null 2>&1 || { echo "Cannot find python ($python_bin)"; exit 1; }
-if [ ! -x "$bwameth_path" ]; then
+# prefer a local wrapper if present (non-invasive); else fall back to python + bwameth_path
+bwameth_exec=""
+if [ -x "${bwameth_wrapper}" ]; then
+    bwameth_exec="${bwameth_wrapper}"
+elif [ -x "${bwameth_path}" ]; then
+    bwameth_exec="${python_bin} ${bwameth_path}"
+else
+    # try to find bwameth.py in PATH
     if command -v bwameth.py >/dev/null 2>&1; then
-        bwameth_path="$(command -v bwameth.py)"
+        bwameth_exec="$(command -v bwameth.py)"
+        # if the found bwameth.py is a script, run it directly (it may have a shebang)
     else
-        echo "Cannot find bwameth.py at ${bwameth_path} and not in PATH"; exit 1
+        echo "Cannot find bwameth wrapper nor system bwameth.py; please install or provide ${bwameth_wrapper}"
+        exit 1
     fi
 fi
 
@@ -96,7 +102,7 @@ if [ "${dryrun,,}" = "yes" ]; then
 fi
 
 shopt -s nullglob
-# iterate under the fastqs root for this target (matches your find output)
+# iterate under the fastqs root for this target
 for sample_dir in "${fastqs}/${tgt}"/*"${tgt}"*; do
     [ -d "$sample_dir" ] || continue
     sample_dir_abs="$(cd "$sample_dir" && pwd)"
@@ -117,8 +123,15 @@ for sample_dir in "${fastqs}/${tgt}"/*"${tgt}"*; do
     outfile="${uname}.bwameth.sam"
     outfull="${outdir}/${outfile}"
 
-    # build the command array for bwameth: python /path/to/bwameth.py <args> R1 R2
-    bwa_cmd=( "$python_bin" "$bwameth_path" "${bwargs[@]}" "$R1" "$R2" )
+    # Build the command array depending on how bwameth_exec was resolved.
+    # If bwameth_exec contains a space (python + script), expand appropriately.
+    if [[ "${bwameth_exec}" == *" "* ]]; then
+        # split into two parts: python + script
+        read -r pybin scriptpath <<<"${bwameth_exec}"
+        bwa_cmd=( "$pybin" "$scriptpath" "${bwargs[@]}" "$R1" "$R2" )
+    else
+        bwa_cmd=( "${bwameth_exec}" "${bwargs[@]}" "$R1" "$R2" )
+    fi
 
     if [ "${dryrun,,}" = "yes" ]; then
         echo "Would run: ${bwa_cmd[*]} > ${outfull}"
