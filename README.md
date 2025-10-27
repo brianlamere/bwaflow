@@ -60,8 +60,8 @@ Example:
 │  │  └─ ...
 ├─ bwaout/
 ├─ bamfiles/
-└─ bwareports/
-└─ scripts /
+├─ bwareports/
+└─ scripts/
 ```
 
 Notes:
