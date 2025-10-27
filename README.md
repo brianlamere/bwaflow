@@ -74,31 +74,39 @@ Notes:
 ## Quick workflow (1–8)
 
 1. Create a project directory if you haven’t already (`aroot`).
-2. Create a scripts directory as a clone from this repo
-3. Create references under `${aroot}/references/<REFNAME>/` and place the single FASTA there.
-4. Index the reference for bwameth (example wrapper):
+2. Create a scripts directory as a clone from this repo and set it in your path for the session
+   - cd $aroot
+   - git clone https://github.com/brianlamere/bwaflow
+   - mv bwaflow scripts
+   - export PATH=/pathto/aroot/scripts:$PATH
+3. Create references under `${aroot}/references/<REFNAME>/` and place the single FASTA there per references subdirectory.
+4. Index each of the references for bwameth (example wrapper):
    - Example: `bwameth.py index-mem2 references/ADNP2/ADNP2.fasta`
    - (This produces whatever index files bwameth expects)
-5. Download FASTQs from BaseSpace into a single directory (e.g. `/projects/toxo2/MS20251020-1`), preserving per-reference subdirectories.
+5. Download FASTQs from BaseSpace into a single directory (e.g. `/projects/toxo2/MS20251020-1`), then create per-reference directories and split into each
 6. Clean up the BaseSpace directory names:
    - cd into `MS20251020-1/<REFNAME>` and run:
-     - `./rename_ds.dirs.sh`  (prints a dry-run)
-     - `./rename_ds.dirs.sh -a`  (actually rename)
-7. Align with bwameth:
+     - `rename_ds.dirs.sh`  (prints a dry-run)
+     - `rename_ds.dirs.sh -a`  (actually rename)
+7. Run trim galore on all the basespace fastq files
+   - cd into `MS20251020-1` and run:
+     - `prepTG.sh /projects/toxo2/MS20251020-1/ ADNP2`  (prints a dry-run)
+     - `prepTG.sh -n no /projects/toxo2/MS20251020-1/ ADNP2`  (run the commands live)
+8. Align with bwameth:
    - Dry-run example (inspect commands):
-     - `./bwalign.sh -n yes -r /projects/toxo2 -f /projects/toxo2/MS20251020-1 SUZ12`
+     - `bwalign.sh -n yes -r /projects/toxo2 -f /projects/toxo2/val_MS20251020-1 SUZ12`
    - Real run (be careful, CPU heavy):
-     - `./bwalign.sh -n no -r /projects/toxo2 -f /projects/toxo2/MS20251020-1 SUZ12`
+     - `bwalign.sh -n no -r /projects/toxo2 -f /projects/toxo2/val_MS20251020-1 SUZ12`
    - Output SAMs will go to `${aroot}/bwaout/<REFNAME>/`.
-8. Run the processing pipeline on the SAM/BAM files:
+9. Run the processing pipeline on the SAM/BAM files:
    - Dry-run:
-     - `./pipelineArray.sh -n yes -r /projects/toxo2 SUZ12`
+     - `pipelineArray.sh -n yes -r /projects/toxo2 SUZ12`
    - Real run:
-     - `./pipelineArray.sh -n no -r /projects/toxo2 SUZ12`
+     - `pipelineArray.sh -n no -r /projects/toxo2 SUZ12`
    - Outputs (BAMs, sorted BAMs, reports) will go to:
      - `${aroot}/bamfiles/<REFNAME>/`
      - `${aroot}/bwareports/<REFNAME>/`
-9. Deliver `${aroot}/bwareports/<REFNAME>/` to the scientist.
+10. Deliver `${aroot}/bwareports/<REFNAME>/` to the scientist.
 
 ---
 
@@ -162,23 +170,6 @@ Prefer editing the top-of-file arrays instead of changing internals.
 - Logging: scripts append to `./logfile.out` in the CWD. Consider running them from the project root or redirecting logs elsewhere.
 - Scaling: bwameth can be CPU and IO-heavy. Either run per-sample sequentially using multiple threads per job, or batch many samples with fewer threads per job (e.g., use GNU parallel / xargs -P and reduce per-job `--threads`).
 - Disk usage: SAM files are big. If you need to reduce disk usage, consider piping SAM->BAM compression in the alignment step (this changes downstream expectations) or delete intermediate files after downstream steps succeed.
-
----
-
-## Example quick check workflow (recommended)
-1. Prepare references and index with bwameth index command.
-2. Download fastqs into `${fastqs}`.
-3. cd into `${fastqs}/${REFNAME}` and run:
-   - `./rename_ds.dirs.sh` (inspect)
-   - `./rename_ds.dirs.sh -a` (apply)
-4. From project root, dry-run alignment:
-   - `./bwalign.sh -n yes -r /projects/toxo2 -f /projects/toxo2/MS20251020-1 SUZ12`
-5. Pick one printed command and run it manually to ensure SAM is produced at the expected path.
-6. Dry-run pipeline:
-   - `./pipelineArray.sh -n yes -r /projects/toxo2 SUZ12`
-7. After manual checks, run real jobs:
-   - `./bwalign.sh -n no -r /projects/toxo2 -f /projects/toxo2/MS20251020-1 SUZ12`
-   - `./pipelineArray.sh -n no -r /projects/toxo2 SUZ12`
 
 ---
 
