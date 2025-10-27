@@ -1,57 +1,83 @@
-#!/usr/bin/bash
-#set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-#21Mar2025 - this is very specific to a particular set of basespace/illumina files
-#in this particular dataset there were only 2fastq files each dir, an R1 and R2
-#just learned about nextflow today; likely will install that and start using it...
-# ...after this run.
+# Usage: prepTG.sh [-n yes|no] [-t THREADS] [-l MINLEN] [-o OUTROOT] [-L LIMIT] [-q VALUE] FASTQ_ROOT REFNAME
+dryrun="yes"; threads=4; minlen=50; outroot=""; limit=0
+default_q=20; quality_mode="default"; quality_value=""
 
-#the first arg is the directory with the subdirectories. this is what is being aligned 
+trim_galore_bin="$(command -v trim_galore || true)"
+[ -n "$trim_galore_bin" ] || { echo "trim_galore not found"; exit 1; }
 
-aroot="/projects/basespace/val_Methylation_PIRCPBMC_Lambda/"
-scratch="/projects/scratch"
-curtime=$(date "+%d%h%Y-%H.%M.%S")
-tgf="/usr/local/bin/trim_galore"
-#adargs="-a CTGTCTCTTATACACATCT"
-#adargs="-a GGGGTGATTTTATTTTTNGGGGTTG"
-#adargs='-a " CTGTCTCTTATACACATCT -a GGGGTGATTTTATTTTTYGGGGTTG -n 2"'
-#adargs='-a "file:./TNF1B_filter.fa"'
+usage(){ cat <<EOF
+Usage: $0 [-n yes|no] [-t THREADS] [-l MINLEN] [-o OUTROOT] [-L LIMIT] [-q VALUE] FASTQ_ROOT REFNAME
+ -q VALUE : integer 0-60 or 'off' (default: ${default_q})
+EOF
+exit 1; }
 
-othargs="-j 12 --paired --length 50"
+while getopts "n:t:l:o:L:q:h" opt; do
+  case "$opt" in
+    n) dryrun="$OPTARG" ;;
+    t) threads="$OPTARG" ;;
+    l) minlen="$OPTARG" ;;
+    o) outroot="$OPTARG" ;;
+    L) limit="$OPTARG" ;;
+    q)
+       qarg="$OPTARG"
+       if [[ "$qarg" == "off" ]]; then quality_mode="off"
+       elif [[ "$qarg" =~ ^[0-9]+$ ]] && (( qarg>=0 && qarg<=60 )); then quality_mode="number"; quality_value="$qarg"
+       else echo "Invalid -q"; exit 1; fi
+       ;;
+    *) usage ;;
+  esac
+done
+shift $((OPTIND-1))
 
-if [ ! -d $aroot/ ]; then
-	echo "the $aroot directory didn't even exist.  You're failing early."
-	exit 1
+fastq_root="${1:-}"; refname="${2:-}"
+[ -n "$fastq_root" -a -n "$refname" ] || usage
+
+# default outroot = parent/val_<basename_of_FASTQ_ROOT>
+if [ -z "$outroot" ]; then
+  parent="$(cd "$(dirname "$fastq_root")" && pwd)"; base="$(basename "$fastq_root")"
+  outroot="${parent}/val_${base}"
+fi
+mkdir -p "$outroot"
+
+# quality args for trim_galore
+tgq_args=()
+if [ "$quality_mode" = "off" ]; then
+  tgq_args+=( "--no_quality_trimming" )
+elif [ "$quality_mode" = "number" ]; then
+  tgq_args+=( "-q" "$quality_value" )
+else
+  tgq_args+=( "-q" "${default_q}" )
 fi
 
-LOGFILE="./logfile.out"
+refdir="${fastq_root%/}/${refname}"
+[ -d "$refdir" ] || { echo "Missing refdir $refdir"; exit 1; }
 
-[ -f $LOGFILE ] && mv $LOGFILE $LOGFILE.$curtime
+shopt -s nullglob
+count=0
+for sample_dir in "${refdir}"/*; do
+  [ -d "$sample_dir" ] || continue
+  count=$((count+1)); [ "$limit" -gt 0 -a "$count" -gt "$limit" ] && break
+  echo "Processing $sample_dir"
 
-for i in `ls -d $1/MS*|tr -s '//'`
-do
-	echo "for $i we have:" >> $LOGFILE
-	echo "running for $i"
-	#this will stay clunky since it is for a particular set of data
-	#a simple wc of the output would be a great error catch btw
-	R1=`ls $i/*L001_R1_001.fastq`
-	R2=`ls $i/*L001_R2_001.fastq`
-	        IFS="/" read -ra parts1 <<< "$R1"
-        IFS="_" read -ra parts2 <<< "${parts1[2]}"
-        echo "for3 we made ${parts2[@]}" >> $LOGFILE
-        if [[ ${#parts2[@]} == "7" ]]; then
-                runname="${2}_${parts2[0]:8}_${parts2[1]}"
-        else
-                runname="${2}_${parts2[0]:8}"
-        fi
-	tgcmd="${tgf} ${othargs} -o ${aroot}/${runname} ${adargs} ${R1} ${R2}"
-	echo -e "\e[41mI would run:\e[44m ${tgcmd}\e[0m"
-	[ -d ${aroot}/${runname} ] || mkdir -p ${aroot}/${runname}
-	if ${tgcmd}; then
-		echo "ran this without error:\\n $tgcmd" >> $LOGFILE 
-	else
-		echo "We died with this: ${tgcmd} \\n  If we die, we stop." | tee -a $LOGFILE
-		exit 1
-	fi
+  R1s=( "$sample_dir"/*L001_R1_001.fastq* "$sample_dir"/*_R1_001.fastq* )
+  R2s=( "$sample_dir"/*L001_R2_001.fastq* "$sample_dir"/*_R2_001.fastq* )
+  if [ "${#R1s[@]}" -eq 0 ] || [ "${#R2s[@]}" -eq 0 ]; then
+    echo "No paired FASTQs in $sample_dir, skipping"; continue
+  fi
+  R1="${R1s[0]}"; R2="${R2s[0]}"
+
+  sample="$(basename "$sample_dir")"
+  outdir="${outroot}/${refname}/${sample}"; mkdir -p "$outdir"
+
+  tg_cmd=( "$trim_galore_bin" --paired -j "$threads" "${tgq_args[@]}" --length "$minlen" -o "$outdir" "$R1" "$R2" )
+  if [ "${dryrun,,}" = "yes" ]; then
+    echo "Would run: ${tg_cmd[*]}"
+  else
+    "${tg_cmd[@]}"
+  fi
 done
 
+echo "Done. Processed $count samples."

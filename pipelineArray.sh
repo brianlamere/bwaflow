@@ -34,6 +34,8 @@ tgt="${1:-}"
 # when you hit auto-complete tab it will have the trailing slash; remove if there
 tgt="$(echo "${tgt}" | tr -d '/')"
 aref="$(ls "${aroot}/references/${tgt}"/*.fasta 2>/dev/null | head -n1)"
+#aref=`ls ${aroot}/references/${tgt}/*.fasta`
+echo "did I get here"
 [ -n "$aref" ] || { echo "Reference fasta not found in ${aroot}/references/${tgt}"; exit 1; }
 
 # Quality threshold

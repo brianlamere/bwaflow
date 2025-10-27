@@ -1,8 +1,9 @@
 #!/usr/bin/bash
-# Conservative refactor of bwalign.sh with optional bwameth wrapper support.
-# If you place the wrapper at ~/bin/bwameth-wrapper.py (or anywhere else),
-# this script will prefer it automatically.  Otherwise it falls back to
-# the system bwameth.py (invoked with python).
+# Conservative refactor of bwalign.sh with TrimGalore "val_" detection.
+# - Prefers *_val_1 / *_val_2 trimmed fastqs if present in the sample dir
+# - Falls back to original L001_R1/R2 naming
+# - Supports a non-invasive bwameth wrapper (preferred if present)
+# - Dry-run mode prints the exact commands that would be executed
 set -euo pipefail
 
 # defaults (edit here or override with -n/-r/-f)
@@ -10,7 +11,7 @@ dryrun="yes"                   # set to "no" to actually run
 aroot="/projects/toxo2"
 fastqs="/projects/toxo2/MS20251020-1"    # root containing per-reference directories
 bwameth_path="/usr/local/bin/bwameth.py" # path to bwameth wrapper (python script)
-bwameth_wrapper="${aroot}/scripts/bwameth-wrapper.py" # preferred non-invasive shim
+bwameth_wrapper="${BWAMETH_WRAPPER:-${aroot}/scripts/bwameth-wrapper.py}" # preferred non-invasive shim
 python_bin="python"
 
 # bwameth args (array so you can adjust at top of file)
@@ -51,20 +52,28 @@ aref="$(ls "${aroot}/references/${tgt}"/*.fasta 2>/dev/null | head -n1 || true)"
 # finalize bwargs with reference
 bwargs+=( --reference "${aref}" )
 
-# prefer a local wrapper if present (non-invasive); else fall back to python + bwameth_path
+# Resolve bwameth execution method:
 bwameth_exec=""
-if [ -x "${bwameth_wrapper}" ]; then
-    bwameth_exec="${bwameth_wrapper}"
-elif [ -x "${bwameth_path}" ]; then
-    bwameth_exec="${python_bin} ${bwameth_path}"
-else
-    # try to find bwameth.py in PATH
-    if command -v bwameth.py >/dev/null 2>&1; then
-        bwameth_exec="$(command -v bwameth.py)"
-        # if the found bwameth.py is a script, run it directly (it may have a shebang)
+if [ -f "${bwameth_wrapper}" ]; then
+    if [ -x "${bwameth_wrapper}" ]; then
+        bwameth_exec="${bwameth_wrapper}"
     else
-        echo "Cannot find bwameth wrapper nor system bwameth.py; please install or provide ${bwameth_wrapper}"
-        exit 1
+        echo "Warning: bwameth wrapper '${bwameth_wrapper}' exists but is not executable." | tee -a "$LOGFILE"
+        echo "You can fix with: chmod +x ${bwameth_wrapper}" | tee -a "$LOGFILE"
+        # fall back to system bwameth if available
+    fi
+fi
+
+if [ -z "${bwameth_exec}" ]; then
+    if [ -x "${bwameth_path}" ]; then
+        bwameth_exec="${python_bin} ${bwameth_path}"
+    else
+        if command -v bwameth.py >/dev/null 2>&1; then
+            bwameth_exec="$(command -v bwameth.py)"
+        else
+            echo "Cannot find bwameth wrapper nor system bwameth.py; please install or provide ${bwameth_wrapper}" | tee -a "$LOGFILE"
+            exit 1
+        fi
     fi
 fi
 
@@ -102,31 +111,45 @@ if [ "${dryrun,,}" = "yes" ]; then
 fi
 
 shopt -s nullglob
-# iterate under the fastqs root for this target
+# iterate under the fastqs root for this target (matches your layout)
 for sample_dir in "${fastqs}/${tgt}"/*"${tgt}"*; do
     [ -d "$sample_dir" ] || continue
     sample_dir_abs="$(cd "$sample_dir" && pwd)"
-    echo "starting ${sample_dir_abs}" | tee -a "$LOGFILE"
+    echo -e "\n#### starting ${sample_dir_abs} ####" | tee -a "$LOGFILE"
 
-    # find R1/R2 (take first match)
-    R1s=( "${sample_dir_abs}"/*L001_R1_001.fastq.gz )
-    R2s=( "${sample_dir_abs}"/*L001_R2_001.fastq.gz )
-    if [ "${#R1s[@]}" -eq 0 ] || [ "${#R2s[@]}" -eq 0 ]; then
-        echo "No R1/R2 fastq found in ${sample_dir_abs}, skipping" | tee -a "$LOGFILE"
-        continue
+    # Prefer TrimGalore outputs if present: *_val_1 / *_val_2 (handles .fq, .fastq, gz)
+    val_r1=( "${sample_dir_abs}"/*_val_1.fastq* "${sample_dir_abs}"/*_val_1.fq* )
+    val_r2=( "${sample_dir_abs}"/*_val_2.fastq* "${sample_dir_abs}"/*_val_2.fq* )
+
+    if [[ -n "${val_r1[0]:-}" && -n "${val_r2[0]:-}" ]]; then
+        echo "Found TrimGalore trimmed files in ${sample_dir_abs}; using those." | tee -a "$LOGFILE"
+        R1="${val_r1[0]}"
+        R2="${val_r2[0]}"
+    else
+        # fallback to original Illumina naming
+        R1s=( "${sample_dir_abs}"/*L001_R1_001.fastq* "${sample_dir_abs}"/*_R1_001.fastq* "${sample_dir_abs}"/*_R1_001.fq* )
+        R2s=( "${sample_dir_abs}"/*L001_R2_001.fastq* "${sample_dir_abs}"/*_R2_001.fastq* "${sample_dir_abs}"/*_R2_001.fq* )
+        if [ "${#R1s[@]}" -eq 0 ] || [ "${#R2s[@]}" -eq 0 ]; then
+            echo "No paired FASTQs (val_ or L001_R*_001) found in ${sample_dir_abs}; skipping" | tee -a "$LOGFILE"
+            continue
+        fi
+        R1="${R1s[0]}"
+        R2="${R2s[0]}"
+        echo "Using raw FASTQs: $(basename "$R1") , $(basename "$R2")" | tee -a "$LOGFILE"
     fi
-    R1="${R1s[0]}"
-    R2="${R2s[0]}"
 
+    # derive sample base name (strip lane/read/suffix)
     basefn="$(basename "$R1")"
     uname="${basefn%%_L00*}"
-    outfile="${uname}.bwameth.sam"
-    outfull="${outdir}/${outfile}"
+    # If using TrimGalore val_ files they often look like sample_R1_val_1.fq.gz,
+    # so fallback to stripping "_val" style if needed:
+    uname="${uname%%_val_*}"
 
-    # Build the command array depending on how bwameth_exec was resolved.
-    # If bwameth_exec contains a space (python + script), expand appropriately.
+    samfile="${uname}.bwameth.sam"
+    outfull="${outdir}/${samfile}"
+
+    # Build bwameth command array depending on bwameth_exec form
     if [[ "${bwameth_exec}" == *" "* ]]; then
-        # split into two parts: python + script
         read -r pybin scriptpath <<<"${bwameth_exec}"
         bwa_cmd=( "$pybin" "$scriptpath" "${bwargs[@]}" "$R1" "$R2" )
     else
@@ -134,7 +157,7 @@ for sample_dir in "${fastqs}/${tgt}"/*"${tgt}"*; do
     fi
 
     if [ "${dryrun,,}" = "yes" ]; then
-        echo "Would run: ${bwa_cmd[*]} > ${outfull}"
+        echo "Would run: ${bwa_cmd[*]} > ${outfull}" | tee -a "$LOGFILE"
     else
         echo -e "\e[41mI will run:\e[44m  ${bwa_cmd[*]} > ${outfull}\e[0m" | tee -a "$LOGFILE"
         if run_cmd bwa_cmd "$outfull"; then
