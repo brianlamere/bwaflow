@@ -61,33 +61,36 @@ Example:
 ├─ bwaout/
 ├─ bamfiles/
 └─ bwareports/
+└─ scripts /
 ```
 
 Notes:
 - The reference directory name must match the top-level subdirectory under the FASTQ root (case-sensitive).
 - `rename_ds.dirs.sh` converts raw BaseSpace download folder names like `167CC_SUZ12_ds.<hash>` into `167CC_SUZ12_S46` (it infers the S### token from filenames inside). Use it before alignment.
+- the scripts directory is intended to be created as a clone from this repo
 
 ---
 
 ## Quick workflow (1–8)
 
 1. Create a project directory if you haven’t already (`aroot`).
-2. Create references under `${aroot}/references/<REFNAME>/` and place the single FASTA there.
-3. Index the reference for bwameth (example wrapper):
+2. Create a scripts directory as a clone from this repo
+3. Create references under `${aroot}/references/<REFNAME>/` and place the single FASTA there.
+4. Index the reference for bwameth (example wrapper):
    - Example: `bwameth.py index-mem2 references/ADNP2/ADNP2.fasta`
    - (This produces whatever index files bwameth expects)
-4. Download FASTQs from BaseSpace into a single directory (e.g. `/projects/toxo2/MS20251020-1`), preserving per-reference subdirectories.
-5. Clean up the BaseSpace directory names:
+5. Download FASTQs from BaseSpace into a single directory (e.g. `/projects/toxo2/MS20251020-1`), preserving per-reference subdirectories.
+6. Clean up the BaseSpace directory names:
    - cd into `MS20251020-1/<REFNAME>` and run:
      - `./rename_ds.dirs.sh`  (prints a dry-run)
      - `./rename_ds.dirs.sh -a`  (actually rename)
-6. Align with bwameth:
+7. Align with bwameth:
    - Dry-run example (inspect commands):
      - `./bwalign.sh -n yes -r /projects/toxo2 -f /projects/toxo2/MS20251020-1 SUZ12`
    - Real run (be careful, CPU heavy):
      - `./bwalign.sh -n no -r /projects/toxo2 -f /projects/toxo2/MS20251020-1 SUZ12`
    - Output SAMs will go to `${aroot}/bwaout/<REFNAME>/`.
-7. Run the processing pipeline on the SAM/BAM files:
+8. Run the processing pipeline on the SAM/BAM files:
    - Dry-run:
      - `./pipelineArray.sh -n yes -r /projects/toxo2 SUZ12`
    - Real run:
@@ -95,7 +98,7 @@ Notes:
    - Outputs (BAMs, sorted BAMs, reports) will go to:
      - `${aroot}/bamfiles/<REFNAME>/`
      - `${aroot}/bwareports/<REFNAME>/`
-8. Deliver `${aroot}/bwareports/<REFNAME>/` to the scientist.
+9. Deliver `${aroot}/bwareports/<REFNAME>/` to the scientist.
 
 ---
 
