@@ -105,6 +105,7 @@ fi
 
 shopt -s nullglob
 for i in "${tgt}"/*"${tgt}"*; do
+    echo "did I get here"
     [ -d "$i" ] || continue
     echo -e "\e[104m#### starting ${i} #########\e[0m" | tee -a "$LOGFILE"
 
@@ -145,9 +146,10 @@ for i in "${tgt}"/*"${tgt}"*; do
 
         if [ "$arr" = "runSTsam" ]; then
             if [ "${dryrun,,}" = "yes" ]; then
+                # report using the loop nameref (guarantees we show arguments)
+                echo "Would run: ${cmdref[*]} > ${statsfile}"
                 run_cmd "$arr" "$statsfile"
             else
-                # show the full command (array contents) instead of just the command name
                 echo -e "\e[41mI will run:\e[44m  ${cmdref[*]} > ${statsfile}\e[0m"
                 if run_cmd "$arr" "$statsfile"; then
                     echo "ran CMD without error: ${arr} > ${statsfile}" >> ${LOGFILE}
@@ -158,9 +160,10 @@ for i in "${tgt}"/*"${tgt}"*; do
             fi
         else
             if [ "${dryrun,,}" = "yes" ]; then
+                # report using the loop nameref (guarantees we show arguments)
+                echo "Would run: ${cmdref[*]}"
                 run_cmd "$arr"
             else
-                # show the full command (array contents) instead of just the command name
                 echo -e "\e[41mI will run:\e[44m  ${cmdref[*]} \e[0m"
                 if run_cmd "$arr"; then
                     echo "ran CMD without error: ${arr}" >> ${LOGFILE}
@@ -170,6 +173,7 @@ for i in "${tgt}"/*"${tgt}"*; do
                 fi
             fi
         fi
+
         # unset the nameref to avoid surprising reuse in the next iteration
         unset -n cmdref 2>/dev/null || true
     done

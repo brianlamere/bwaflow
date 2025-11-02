@@ -83,22 +83,22 @@ Notes:
 4. Index each of the references for bwameth (example wrapper):
    - Example: `bwameth.py index-mem2 references/ADNP2/ADNP2.fasta`
    - (This produces whatever index files bwameth expects)
-5. Download FASTQs from BaseSpace into a single directory (e.g. `/projects/toxo2/MS20251020-1`), then create per-reference directories and split into each
+5. Download FASTQs from BaseSpace into a single directory (e.g. `/projects/toxo2/bsfiles`), then create per-reference directories and split into each
 6. Clean up the BaseSpace directory names:
-   - cd into `MS20251020-1/<REFNAME>` and run:
+   - cd into `bsfiles/<REFNAME>` and run:
      - `rename_ds.dirs.sh`  (prints a dry-run)
      - `rename_ds.dirs.sh -a`  (actually rename)
 7. Run trim galore on all the basespace fastq files
-   - cd into `MS20251020-1` and run:
+   - cd into `bsfiles` and run:
      - `prepTG.sh /projects/toxo2/MS20251020-1/ ADNP2`  (prints a dry-run)
      - `prepTG.sh -n no /projects/toxo2/MS20251020-1/ ADNP2`  (run the commands live)
-8. Align with bwameth:
+8. Still in the bsfiles directory, align with bwameth:
    - Dry-run example (inspect commands):
      - `bwalign.sh -n yes -r /projects/toxo2 -f /projects/toxo2/val_MS20251020-1 SUZ12`
    - Real run (be careful, CPU heavy):
      - `bwalign.sh -n no -r /projects/toxo2 -f /projects/toxo2/val_MS20251020-1 SUZ12`
    - Output SAMs will go to `${aroot}/bwaout/<REFNAME>/`.
-9. Run the processing pipeline on the SAM/BAM files:
+9. Still in the bsfiles directory, run the processing pipeline on the SAM/BAM files:
    - Dry-run:
      - `pipelineArray.sh -n yes -r /projects/toxo2 SUZ12`
    - Real run:
