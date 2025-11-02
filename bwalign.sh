@@ -9,7 +9,7 @@ set -euo pipefail
 # defaults (edit here or override with -n/-r/-f)
 dryrun="yes"                   # set to "no" to actually run
 aroot="/projects/toxo2"
-fastqs="/projects/toxo2/MS20251020-1"    # root containing per-reference directories
+fastqs="/projects/toxo2/val_MS20251020-1"    # root containing per-reference directories
 bwameth_path="/usr/local/bin/bwameth.py" # path to bwameth wrapper (python script)
 bwameth_wrapper="${BWAMETH_WRAPPER:-${aroot}/scripts/bwameth-wrapper.py}" # preferred non-invasive shim
 python_bin="python"
@@ -110,8 +110,10 @@ if [ "${dryrun,,}" = "yes" ]; then
     echo "DRY RUN MODE: no commands will be executed. The script will print the commands it would run."
 fi
 
+echo "${fastqs}/${tgt}"/*"${tgt}"*
+
 shopt -s nullglob
-# iterate under the fastqs root for this target (matches your layout)
+# iterate under the fastqs root for this target
 for sample_dir in "${fastqs}/${tgt}"/*"${tgt}"*; do
     [ -d "$sample_dir" ] || continue
     sample_dir_abs="$(cd "$sample_dir" && pwd)"

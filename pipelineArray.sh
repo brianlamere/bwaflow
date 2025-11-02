@@ -7,7 +7,14 @@ dryrun="yes"
 curtime=$(date "+%d%h%Y-%H.%M.%S")
 aroot="/projects/toxo2"     # can be overridden with -r
 samcmd="/usr/bin/samtools"
-mdcmd="/projects/usr/bin/MethylDackel"
+mdcmd="/usr/local/bin/MethylDackel"
+
+# Quality threshold
+qthreshold=42
+mqX=".mq${qthreshold}"
+
+#threads to use
+threads=12
 
 usage() {
   cat <<EOF
@@ -33,27 +40,23 @@ tgt="${1:-}"
 
 # when you hit auto-complete tab it will have the trailing slash; remove if there
 tgt="$(echo "${tgt}" | tr -d '/')"
-aref="$(ls "${aroot}/references/${tgt}"/*.fasta 2>/dev/null | head -n1)"
-#aref=`ls ${aroot}/references/${tgt}/*.fasta`
-echo "did I get here"
-[ -n "$aref" ] || { echo "Reference fasta not found in ${aroot}/references/${tgt}"; exit 1; }
 
-# Quality threshold
-qthreshold=42
-mqX=".mq${qthreshold}"
+# find a reference fasta safely without triggering `set -e` when there is no match
+aref="$(ls "${aroot}/references/${tgt}"/*.fasta 2>/dev/null | head -n1)"
+[ -n "$aref" ] || { echo "Reference fasta not found in ${aroot}/references/${tgt}"; exit 1; }
 
 # flags arrays
 add_flags=()
-samVopts=( view --threads 4 -q "${qthreshold}" "${add_flags[@]}" -bT "${aref}" )
-samSopts=( sort --threads 4 )
-samIopts=( index --threads 4 )
+samVopts=( view --threads "${threads}" -q "${qthreshold}" "${add_flags[@]}" -bT "${aref}" )
+samSopts=( sort --threads "${threads}" )
+samIopts=( index --threads "${threads}" )
 samSTopts=( stats )
 samFopts=( faidx )
 
-mdEopts=( extract -@ 4 )
-mdCRopts=( extract -@ 4 --cytosine_report )
+mdEopts=( extract -@ "${threads}" )
+mdCRopts=( extract -@ "${threads}" --cytosine_report )
 mdMCopts=( mergeContext )
-mdMBopts=( mbias )
+mdMBopts=( mbias -@ "${threads}")
 
 LOGFILE="./logfile.out"
 [ -f "$LOGFILE" ] && mv "$LOGFILE" "$LOGFILE.$curtime"
@@ -133,15 +136,19 @@ for i in "${tgt}"/*"${tgt}"*; do
     runEmd=( "$mdcmd" "${mdEopts[@]}" "${aref}" "$sbamfull" -o "${mdpreF}" )
     runCRmd=( "$mdcmd" "${mdCRopts[@]}" "${aref}" "$sbamfull" -o "${mdpreF}" )
     runMCmd=( "$mdcmd" "${mdMCopts[@]}" "${aref}" "${mdpreF}_CpG.bedGraph" -o "${mdpreF}.mergeContext" )
-    runMBmd=( "$mdcmd" "${mdMBopts[@]}" "${aref}" "${mdpreF}_CpG.bedGraph" "${mdpreF}" )
+    runMBmd=( "$mdcmd" "${mdMBopts[@]}" "${aref}" "${sbamfull}" "${mdpreF}" )
 
     cmd_arrays=( runVsam runSsam runIsam runEmd runCRmd runMCmd runSTsam runMBmd )
     for arr in "${cmd_arrays[@]}"; do
+        # create a nameref so we can reliably show the full array contents
+        declare -n cmdref="$arr"
+
         if [ "$arr" = "runSTsam" ]; then
             if [ "${dryrun,,}" = "yes" ]; then
                 run_cmd "$arr" "$statsfile"
             else
-                echo -e "\e[41mI will run:\e[44m  ${runSTsam[*]} > ${statsfile}\e[0m"
+                # show the full command (array contents) instead of just the command name
+                echo -e "\e[41mI will run:\e[44m  ${cmdref[*]} > ${statsfile}\e[0m"
                 if run_cmd "$arr" "$statsfile"; then
                     echo "ran CMD without error: ${arr} > ${statsfile}" >> ${LOGFILE}
                 else
@@ -153,7 +160,8 @@ for i in "${tgt}"/*"${tgt}"*; do
             if [ "${dryrun,,}" = "yes" ]; then
                 run_cmd "$arr"
             else
-                echo -e "\e[41mI will run:\e[44m  ${!arr} \e[0m"
+                # show the full command (array contents) instead of just the command name
+                echo -e "\e[41mI will run:\e[44m  ${cmdref[*]} \e[0m"
                 if run_cmd "$arr"; then
                     echo "ran CMD without error: ${arr}" >> ${LOGFILE}
                 else
@@ -162,6 +170,8 @@ for i in "${tgt}"/*"${tgt}"*; do
                 fi
             fi
         fi
+        # unset the nameref to avoid surprising reuse in the next iteration
+        unset -n cmdref 2>/dev/null || true
     done
 done
 
