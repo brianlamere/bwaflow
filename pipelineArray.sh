@@ -5,7 +5,7 @@ set -euo pipefail
 # Defaults
 dryrun="yes"
 curtime=$(date "+%d%h%Y-%H.%M.%S")
-aroot="/projects/toxo2"     # can be overridden with -r
+aroot="/projects/toxo3"     # can be overridden with -r
 samcmd="/usr/bin/samtools"
 mdcmd="/usr/local/bin/MethylDackel"
 
@@ -46,7 +46,8 @@ aref="$(ls "${aroot}/references/${tgt}"/*.fasta 2>/dev/null | head -n1)"
 [ -n "$aref" ] || { echo "Reference fasta not found in ${aroot}/references/${tgt}"; exit 1; }
 
 # flags arrays
-add_flags=()
+#bwa is improperly deciding entire runs are improperly paired.  Verified elsewhere they are.
+add_flags=( --add-flags 0x2 )
 samVopts=( view --threads "${threads}" -q "${qthreshold}" "${add_flags[@]}" -bT "${aref}" )
 samSopts=( sort --threads "${threads}" )
 samIopts=( index --threads "${threads}" )
